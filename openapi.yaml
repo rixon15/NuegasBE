@@ -1,0 +1,576 @@
+openapi: 3.1.1
+
+info:
+  title: Task Management API
+  version: 1.0.0
+  description: |
+    Authentication related endpoints for the Task Management Dashboard API. Covers user profile retrieval and logout.
+    Explains OAuth2 flow initiation.
+
+servers:
+  - url: http://localhost:8081/api/v1
+    description: Local development server
+  - url: https://deployed-api/api/v1
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication, profile, and OAuth2 flow information
+  - name: User
+    description: Operations about users.
+  - name: Tasks
+    description: Core operations related o individual tasks
+
+
+paths:
+  /oauth2/authorization/{provider}:
+    get:
+      tags:
+        - Authentication
+      summary: Initiate OAuth2 Login Flow (Browser Redirect)
+      description: |
+        Initiates the OAuth2 Authorization Code Grant flow for the specified provider.
+        The frontend should redirect the user's browser to this endpoint (e.g. '/oauth2/authorization/google').
+        Spring Security handles the subsequent redirect to the OAuth Provider (e.g. Google's login page).
+        This is NOT typically called via fetch/XHR from frontend JavaScript.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: The OAuth provider identifier (e.g. google, github,) configured in the backend
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirects the user's browser to the OAuth provider's authentication page
+
+  /login/oauth2/code/{provider}:
+    get:
+      tags:
+        - Authentication
+      summary: Handle OAuth2 callback (Browser redirect)
+      description: |
+        The endpoint the OAuth Provider redirects the user back to after successful authentication and consent.
+        Includes an authorization 'code' parameter from the provider.
+        Spring Security intercepts this request, exchanges the code for tokens, fetches user info,
+        finds/creates the local user, generates a JWT, and then typically redirects the browser
+        back to the frontend (e.g., '/auth/callback?token=...') or sets an HttpOnly cookie.
+        This is NOT typically called via fetch/XHR from frontend JavaScript.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: Name of the OAuth provider
+          schema:
+            type: string
+        - name: code
+          in: query
+          required: true
+          description: Authorization code provided by the OAuth provider
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: An opaque value used to maintain state between the request and callback (handled by Spring Security).
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirects the users browser back to the frontend application
+        '400':
+          description: Error during code exchange or user processing (Response body might vary).
+        '500':
+          description: Internal server error during callback processing (Response body might vary).
+
+  /users/me:
+    get:
+      tags:
+        - User
+        - Authentication
+      summary: Get current User Profile
+      description: Retrieves the information's of the currently authenticated user
+      security:
+        - bearerAuth: [] #Required JWT bearer token
+      responses:
+        '200':
+          description: Successfully retrieved user profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDTO'
+        '401':
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+
+  /auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout current user
+      description: |
+        Logs out the current user. The backend might perform cleanup(JWT blacklisting), 
+        the frontend should clear its s toed tokens upon receiving a 204 response(logged out successfully)
+      security:
+        - bearerAuth: [] # Requires JWT bearer token
+      responses:
+        '204':
+          description: Successfully logged out. Has no content
+        '401':
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+  /api/v1/tasks:
+    get:
+      tags:
+        - Tasks
+      summary:
+        List user's tasks
+      description: |
+        Retrieves a list of tasks associated with the authenticated user
+        Supports filtering by various criteria (e.g. column_id, assigned user) and pagination via query parameters
+        Requires JWT authentication
+      security:
+        - bearerAuth: [] # Requires JWT bearer token
+      parameters:
+        #Filtering
+        - name: columnID
+          in: query
+          description: Filter tasks by the ID of the column they belong to
+          required: false
+          schema:
+            type: integer
+            format: int64
+            example: 4
+        - name: assignedUserID
+          in: query
+          description: Filter tasks assigned to a specific user ID
+          required: false
+          schema:
+            type: integer
+            format: int64
+            example: 63
+        - name: creatorID
+          in: query
+          required: false
+          description: Filter tasks created by a specific user ID
+          schema:
+            type: integer
+            format: int64
+            example: 101
+        - name: search
+          in: query
+          required: false
+          description: Filter tasks by a keyword search in title or description
+          schema:
+            type: string
+            example: deployment
+        #Sorting
+        - name: sortBy
+          in: query
+          required: false
+          description: Field to sort tasks by. Common values include 'createdAt', 'updatedAt', 'deadline', 'title'
+          schema:
+            type: string
+            enum: [ createdAt, updatedAt, deadline, title ] #Allowed sort fields defined by the enum
+            default: createdAt
+            example: deadline
+        - name: sortDir
+          in: query
+          required: false
+          description: Direction to sort tasks ('ASC' for ascending, 'DESC' for descending)
+          schema:
+            type: string
+            enum: [ ASC, DESC ]
+            default: DESC
+            example: ASC
+        #Pagination
+        - name: page
+          in: query
+          required: false
+          description: Page number (0-indexed)
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            default: 0
+            example: 1
+        - name: size
+          in: query
+          required: false
+          description: Number of tasks per page
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 50 #This could get changed later on
+            default: 20
+            example: 10
+      responses:
+        200:
+          description: A list of tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TaskDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or it's expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        400:
+          description: Invalid parameter values (e.g non-integer page size)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+    post:
+      tags:
+        - Tasks
+      summary: Create a Task for the user
+      description: |
+        Creates a task and associates it with the current user.
+        Requires JWT authentication.
+      security:
+        - bearerAuth: [] # Requires JWT bearer token
+      requestBody:
+        description: Task details to create the task
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreateDTO'
+      responses:
+        201:
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDTO'
+          headers:
+            Location:
+              description: URL of the newly created task
+              schema:
+                type: string
+                format: url
+        400:
+          description: Invalid input data provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error during task creation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+
+  /api/v1/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Internal id of the task
+        schema:
+          type: integer
+          format: int64
+          example: 104
+    get:
+      tags:
+        - Tasks
+      summary: Get task by id
+      description: |
+        Retrieves the details of a specific task by its id
+        Requires JWT authentication
+      security:
+        - bearerAuth: [] # Requires JWT bearer token
+      responses:
+        200:
+          description: Successfully retrieved the task details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error while retrieving task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+    put:
+      tags:
+        - Tasks
+      summary: Update task by id
+      description: |
+        Updates an existing task by its id
+        Allows partial updates based on the provided fields
+        Requires JWT authentication
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: |
+          Task details to update
+          Only include fields that need changing
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUpdateDTO'
+      responses:
+        200:
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskDTO'
+        400:
+          description: Invalid data provided
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error during task update
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+    delete:
+      tags:
+        - Tasks
+      summary: Delete task by id
+      description: |
+        Deletes a specific task by id
+        Requires JWT authentication
+      security:
+        - bearerAuth: []
+      responses:
+        204:
+          description: Task deleted successfully. No content returned
+        401:
+          description: Unauthorized - JWT is missing, invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error during task deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+components:
+  schemas:
+    UserDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: User's internal id
+          example: 101
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: user@exampleEmail.com
+        name:
+          type: string
+          description: User's display name
+          example: Ivacsony Szilard
+        avatarUrl:
+          type: string
+          format: url
+          nullable: true
+          description: Url pointing to the user's avatar image
+          example: https://example.com/avatar.jpg
+        role:
+          type: string
+          description: User's role name
+          example: 'USER'
+      required:
+        - id
+        - email
+        - name
+        - role
+    TaskDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Task's internal id
+          example: 102
+        title:
+          type: string
+          description: Task's main title
+          example: Create new app
+        description:
+          type: string
+          nullable: true
+          description: Small description related to the task's title
+          example: Create backend for the new app
+        columnID:
+          type: integer
+          format: int64
+          description: Internal id of the column the Task is currently in
+          example: 3
+        progress:
+          type: integer
+          format: int32
+          description: The number of completed checklist items(subtasks)
+          example: 7
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: The due date of the task
+          example: 4/8/2026
+        imageUrl:
+          type: string
+          format: url
+          nullable: true
+          description: Url pointing to the background image of the task
+          example: https://example.com/task/id
+      required:
+        - id
+        - title
+        - columnID
+        - progress
+
+    TaskCreateDTO:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Task's tile
+          example: Create new app
+        description:
+          type: string
+          nullable: true
+          description: Small description related to the tasks title
+          example: Create backend for the new app
+        columnID:
+          type: integer
+          format: int64
+          description: Internal id of the column the Task is currently in
+          example: 2
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: The due date of the task
+          example: 4/15/2026
+        imageUrl:
+          type: string
+          format: url
+          nullable: true
+          description: Url pointing to the background image of the task
+          example: https://example.com/task/id
+      required:
+        - title
+        - columnID
+
+    TaskUpdateDTO:
+      type: object
+      properties:
+        title:
+          type: string
+          nullable: true
+          description: Task's tile
+          example: Create new app
+        description:
+          type: string
+          nullable: true
+          description: Small description related to the tasks title
+          example: Create backend for the new app
+        progress:
+          type: integer
+          format: int32
+          description: The number of completed checklist items(subtasks)
+          example: 7
+        deadline:
+          type: string
+          format: date-time
+          nullable: true
+          description: The due date of the task
+          example: 4/15/2026
+        imageUrl:
+          type: string
+          format: url
+          nullable: true
+          description: Url pointing to the background image of the task
+          example: https://example.com/task/id
+
+    ErrorDTO:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+      required:
+        - timestamp
+        - status
+        - error
+        - message
+        - path
+
+  securitySchemes:
+    bearerAuth: # Name used in security: sections
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description:  'JWT token obtained after successful OAuth2 login. Include via Authorization: Bearer <token> header'
