@@ -404,6 +404,187 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorDTO'
+  /api/v1/tasks/{taskId}/checklist:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        description: Internal id of the task the checklist items belong to
+        schema:
+          type: integer
+          format: int64
+          example: 69
+    get:
+      tags:
+        - Tasks
+      summary: Get a list of checklist items (sub tasks)
+      description: | 
+        Retrieves a list of checklist items (sub tasks) sorted by the creation date
+        Requires JWT authentication
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Successfully retrieve a list of checklist items (sub tasks)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChecklistItemDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error while retrieving task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+    post:
+      tags:
+        - Tasks
+      summary: Create a new checklist item (sub task)
+      description: |
+        Creates a new checklist item (sub task) for the associated task
+        Requires JWT authentication
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: Information needed to create a new checklist item (sub task)
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistItemCreateDTO'
+      responses:
+        200:
+          description: Successfully created the checklist item (sub task)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItemDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error while retrieving task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+  /api/v1/tasks/{taskId}/checklist/{itemId}:
+    parameters:
+      - name: taskId
+        in: path
+        required: true
+        description: Internal id of the task the checklist items belong to
+        schema:
+          type: integer
+          format: int64
+          example: 69
+      - name: itemId
+        in: path
+        required: true
+        description: Internal id of the checklist item (sub task)
+        schema:
+          type: integer
+          format: int64
+          example: 6
+    put:
+      tags:
+        - Tasks
+      summary: Update checklist item
+      description: |
+        Updates an existing checklist item with the associated id
+        Allows partial updates based on the provided fields
+        Requires JWT authentication
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: | 
+          Checklist item details to update
+          Only include fields that need changing
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChecklistItemCreateDTO'
+      responses:
+        200:
+          description: Successfully updated the checklist item (sub task)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChecklistItemDTO'
+        401:
+          description: Unauthorized - JWT is missing, invalid or its expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error while retrieving task
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+    delete:
+      tags:
+        - Tasks
+      summary: Delete checklist item (sub task) by id
+      description: |
+        Deletes a specific checklist item by id
+        Requires JWT authentication
+      security:
+        - bearerAuth: [ ]
+      responses:
+        204:
+          description: Checklist item (sub task) deleted successfully. No content returned
+        401:
+          description: Unauthorized - JWT is missing, invalid or expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        404:
+          description: Task not found with the specific id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+        500:
+          description: Internal server error during task deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorDTO'
+
+
 components:
   schemas:
     UserDTO:
@@ -546,6 +727,68 @@ components:
           nullable: true
           description: Url pointing to the background image of the task
           example: https://example.com/task/id
+
+    ChecklistItemDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Internal id of the checklist item (sub task)
+          example: 4
+        description:
+          type: string
+          description: Description of the checklist item (sub task)
+          example: Do checklist item 2 before checklist item 3
+        isCompleted:
+          type: boolean
+          description: Boolean value keeping track of the status of the checklist item (sub task)
+          example: false
+        taskId:
+          type: integer
+          format: int64
+          description: Internal id of the task the checklist item (sub task) belongs to
+          example: 32
+      required:
+        - id
+        - description
+        - isCompleted
+        - taskId
+
+    ChecklistItemCreateDTO:
+      type: object
+      properties:
+        description:
+          type: string
+          description: Description of the checklist item (sub task)
+          example: Do checklist item 2 before checklist item 3
+        taskId:
+          type: integer
+          format: int64
+          description: Internal id of the task the checklist item (sub task) belongs to
+          example: 32
+      required:
+        - description
+        - taskId
+
+    ChecklistItemUpdateDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Internal id of the checklist item (sub task)
+          example: 7
+        description:
+          type: string
+          description: Description of the checklist item (sub task)
+          example: Do checklist item 2 before checklist item 3
+        isCompleted:
+          type: boolean
+          description: Boolean representing the state of the checklist item (sub task)
+          example: true
+      required:
+        - id
 
     ErrorDTO:
       type: object
